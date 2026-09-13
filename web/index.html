@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>AeroFlight MK-1 // Drone Flight Controller</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+</head>
+<body class="cockpit-theme">
+
+  <!-- TOP HUD BAR -->
+  <header class="hud-topbar">
+    <div class="topbar-left">
+      <div class="system-brand">
+        <span class="brand-icon">▲</span>
+        <span class="brand-title">AERO-FLIGHT <span class="accent-text">MK-1</span></span>
+      </div>
+      <div id="connectionBadge" class="status-badge disconnected">
+        <span class="status-dot"></span>
+        <span id="connectionText">DISCONNECTED</span>
+      </div>
+    </div>
+
+    <!-- TELEMETRY SENSORS (Strictly N/A for unsupported fields) -->
+    <div class="telemetry-bar">
+      <div class="telem-item" title="Protocol does not support battery telemetry">
+        <span class="telem-label">BATT</span>
+        <span class="telem-val na-val">N/A</span>
+      </div>
+      <div class="telem-item" title="Protocol does not support altitude telemetry">
+        <span class="telem-label">ALT</span>
+        <span class="telem-val na-val">N/A</span>
+      </div>
+      <div class="telem-item" title="Protocol does not support GPS telemetry">
+        <span class="telem-label">GPS</span>
+        <span class="telem-val na-val">N/A</span>
+      </div>
+      <div class="telem-item">
+        <span class="telem-label">FPS</span>
+        <span id="fpsVal" class="telem-val">0.0</span>
+      </div>
+      <div class="telem-item">
+        <span class="telem-label">RES</span>
+        <span id="resVal" class="telem-val">OFFLINE</span>
+      </div>
+    </div>
+
+    <div class="topbar-right">
+      <button id="btnConnect" class="hud-btn primary-btn">CONNECT</button>
+      <button id="btnSettings" class="hud-btn icon-btn" title="Flight Settings">⚙ SETTINGS</button>
+      <button id="btnDevMode" class="hud-btn icon-btn" title="Developer Diagnostics">⚡ DEV LOG</button>
+      <button id="btnFullscreen" class="hud-btn icon-btn" title="Fullscreen">⛶</button>
+    </div>
+  </header>
+
+  <!-- MAIN COCKPIT VIEW -->
+  <main class="cockpit-viewport">
+
+    <!-- RTSP VIDEO BACKGROUND & HUD OVERLAY -->
+    <div class="video-container" id="videoContainer">
+      <img id="videoFeed" src="/video_feed" alt="RTSP Live Feed" class="video-feed" onerror="this.classList.add('error');" onload="this.classList.remove('error');">
+      
+      <!-- Crosshair / Reticle Overlay -->
+      <div class="hud-reticle">
+        <div class="reticle-center"></div>
+        <div class="horizon-line left"></div>
+        <div class="horizon-line right"></div>
+        <div class="pitch-ladder">
+          <div class="ladder-bar bar-pos-10"></div>
+          <div class="ladder-bar bar-0"></div>
+          <div class="ladder-bar bar-neg-10"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- LEFT FLIGHT CONTROLLER ZONE (Mode 2: Throttle / Yaw) -->
+    <section class="stick-zone stick-left">
+      <div class="stick-header">
+        <span class="stick-title">LEFT STICK [MODE 2]</span>
+        <div class="stick-readouts">
+          <span>THR: <strong id="valThrottle">128</strong></span>
+          <span>YAW: <strong id="valYaw">128</strong></span>
+        </div>
+      </div>
+      <div class="joystick-pad" id="padLeft">
+        <div class="joystick-boundary">
+          <div class="axis-guide x-axis"></div>
+          <div class="axis-guide y-axis"></div>
+          <div class="joystick-knob" id="knobLeft"></div>
+        </div>
+      </div>
+      <div class="stick-footer">
+        <span class="axis-label">▲ CLIMB / ▼ DESCEND</span>
+        <span class="axis-label">◄ ROTATE L / ROTATE R ►</span>
+      </div>
+    </section>
+
+    <!-- CENTER TACTICAL FLIGHT CONTROLS -->
+    <section class="center-control-strip">
+      
+      <!-- PRIMARY ACTION BUTTONS -->
+      <div class="primary-actions">
+        <button id="btnTakeoff" class="action-btn takeoff-btn">
+          <span class="btn-icon">▲</span>
+          <span class="btn-text">TAKE OFF</span>
+          <span class="sub-text">[0x20]</span>
+        </button>
+
+        <button id="btnLand" class="action-btn land-btn">
+          <span class="btn-icon">▼</span>
+          <span class="btn-text">AUTO LAND</span>
+          <span class="sub-text">[0x02]</span>
+        </button>
+      </div>
+
+      <!-- CRITICAL GUARDED EMERGENCY STOP -->
+      <div class="emergency-container">
+        <div class="emergency-guard-label">SAFETY CRITICAL</div>
+        <button id="btnEmergency" class="emergency-btn" title="Hold or Click to cut rotor power immediately">
+          <span class="emergency-icon">⚠</span>
+          <span class="emergency-text">EMERGENCY STOP</span>
+          <span class="emergency-sub">ROTOR KILL [0x04]</span>
+        </button>
+      </div>
+
+      <!-- SECONDARY CONTROLS -->
+      <div class="aux-actions">
+        <button id="btnGyroCal" class="aux-btn" title="Calibrate Gyroscope [0x80]">
+          <span>⚖ GYRO CAL</span>
+        </button>
+        <button id="btnCameraSwitch" class="aux-btn" title="Switch Drone Camera [0x06]">
+          <span>📷 SWITCH CAM</span>
+        </button>
+        <button id="btnSpeedToggle" class="aux-btn" title="Toggle Speed Mode [0x01]">
+          <span>⚡ SPEED: <strong id="speedModeLabel">NORMAL</strong></span>
+        </button>
+      </div>
+
+      <!-- ACTIVE PACKET INSPECTION PILL -->
+      <div class="packet-pill" title="Live UDP Flight Packet Stream (20Hz)">
+        <span class="pill-label">TX UDP:</span>
+        <code id="livePacketHex" class="pill-hex">03 66 80 80 80 80 00 00 99</code>
+      </div>
+    </section>
+
+    <!-- RIGHT FLIGHT CONTROLLER ZONE (Mode 2: Pitch / Roll) -->
+    <section class="stick-zone stick-right">
+      <div class="stick-header">
+        <span class="stick-title">RIGHT STICK [MODE 2]</span>
+        <div class="stick-readouts">
+          <span>PITCH: <strong id="valPitch">128</strong></span>
+          <span>ROLL: <strong id="valRoll">128</strong></span>
+        </div>
+      </div>
+      <div class="joystick-pad" id="padRight">
+        <div class="joystick-boundary">
+          <div class="axis-guide x-axis"></div>
+          <div class="axis-guide y-axis"></div>
+          <div class="joystick-knob" id="knobRight"></div>
+        </div>
+      </div>
+      <div class="stick-footer">
+        <span class="axis-label">▲ FORWARD / ▼ BACKWARD</span>
+        <span class="axis-label">◄ BANK LEFT / BANK RIGHT ►</span>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- FLIGHT SETTINGS & SAFETY LIMITS MODAL (PHASE 6 & 7) -->
+  <div id="modalSettings" class="modal-overlay hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>FLIGHT SETTINGS & SAFETY LIMITS</h3>
+        <button id="btnCloseSettings" class="modal-close-btn">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="settings-alert info-alert">
+          <strong>APPLICATION LIMITS VS FIRMWARE LIMITS:</strong>
+          These controls enforce client-side safety limits and stick scaling prior to packet generation.
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <label for="inputSpeedLimit">Application Speed Ceiling</label>
+            <span class="setting-desc">Scales max stick deflection to limit drone maximum speed.</span>
+          </div>
+          <div class="setting-ctrl">
+            <input type="range" id="inputSpeedLimit" min="20" max="100" step="5" value="100">
+            <span id="lblSpeedLimit" class="slider-val">100%</span>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <label for="inputDeadZone">Joystick Center Deadzone</label>
+            <span class="setting-desc">Threshold around neutral (128) ignored to prevent drift.</span>
+          </div>
+          <div class="setting-ctrl">
+            <input type="range" id="inputDeadZone" min="0" max="30" step="2" value="12">
+            <span id="lblDeadZone" class="slider-val">±12</span>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <label for="inputWatchdog">Command Timeout / Neutral Watchdog</label>
+            <span class="setting-desc">Time before releasing sticks reverts automatically to neutral.</span>
+          </div>
+          <div class="setting-ctrl">
+            <input type="range" id="inputWatchdog" min="100" max="1000" step="50" value="300">
+            <span id="lblWatchdog" class="slider-val">300 ms</span>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <label for="chkYawDeadband">Firmware Yaw Deadband [104 - 152]</label>
+            <span class="setting-desc">Enforces original RC FPV hardware rotation deadband.</span>
+          </div>
+          <div class="setting-ctrl">
+            <input type="checkbox" id="chkYawDeadband" checked>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <label for="inputDroneIp">Drone IP Address & Port</label>
+            <span class="setting-desc">Confirmed drone gateway IP and UDP control port.</span>
+          </div>
+          <div class="setting-ctrl text-inputs">
+            <input type="text" id="inputDroneIp" value="192.168.1.1" class="text-field">
+            <input type="number" id="inputDronePort" value="7099" class="text-field port-field">
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="btnSaveSettings" class="hud-btn primary-btn">APPLY SETTINGS</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- DEVELOPER MODE DRAWER (PHASE 10) -->
+  <aside id="drawerDevMode" class="dev-drawer hidden">
+    <div class="drawer-header">
+      <h4>⚡ DEVELOPER DIAGNOSTICS & TELEMETRY</h4>
+      <button id="btnCloseDev" class="drawer-close-btn">&times;</button>
+    </div>
+
+    <div class="drawer-metrics">
+      <div class="metric-card">
+        <span class="metric-label">PACKETS SENT</span>
+        <span id="devSentCount" class="metric-num">0</span>
+      </div>
+      <div class="metric-card">
+        <span class="metric-label">PACKETS RECV</span>
+        <span id="devRecvCount" class="metric-num">0</span>
+      </div>
+      <div class="metric-card">
+        <span class="metric-label">HEARTBEATS (1Hz)</span>
+        <span id="devHbCount" class="metric-num">0</span>
+      </div>
+      <div class="metric-card">
+        <span class="metric-label">FREQUENCY</span>
+        <span class="metric-num">20 Hz</span>
+      </div>
+    </div>
+
+    <div class="drawer-section">
+      <label>LAST TRANSMITTED HEX PACKET (9 BYTES)</label>
+      <code id="devLastTxHex" class="hex-box">03 66 80 80 80 80 00 00 99</code>
+    </div>
+
+    <div class="drawer-section">
+      <label>LAST RECEIVED HEX DOWNLINK</label>
+      <code id="devLastRxHex" class="hex-box">AWAITING INBOUND DATA...</code>
+    </div>
+
+    <div class="drawer-section">
+      <label>LIVE SOCKET EVENT LOG</label>
+      <div id="devLogContainer" class="log-stream">
+        <div class="log-entry info">Initial socket idle. Ready to connect.</div>
+      </div>
+    </div>
+  </aside>
+
+  <script src="app.js"></script>
+</body>
+</html>
